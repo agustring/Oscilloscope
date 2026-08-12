@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mso2024-remote"
+version = "1.0.0"
+description = "Remote front panel for the Tektronix MSO2024 oscilloscope"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.7,<7",
+    "numpy>=1.26,<3",
+    "pyqtgraph>=0.13.7,<1",
+    "PyVISA>=1.14,<2",
+    "pyvisa-py[usb]>=0.7,<1",
+    "libusb-package>=1.0.26.3,<2",
+]
+
+[project.scripts]
+mso2024-remote = "mso2024_remote.main:main"
+
+[tool.setuptools.packages.find]
+include = ["mso2024_remote*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
