@@ -107,10 +107,25 @@ class InstrumentWorker(QtCore.QObject):
         try:
             self.connection.set_timeout(timeout_ms)
             identity = self.connection.connect(resource)
+            # Establish the GUI baseline exclusively from instrument queries before
+            # enabling controls or starting waveform transfers. This preserves the
+            # scope's existing timebase and every other front-panel setting.
+            scope = self._require_scope()
+            snapshot = scope.snapshot()
+            self.enabled_channels = {
+                int(channel)
+                for channel, state in snapshot["channels"].items()
+                if state.get("enabled")
+            }
+            self.snapshot_ready.emit(snapshot)
             self.connection_changed.emit(True, identity, resource)
             self._emit_diagnostics()
-            self.poll_count = 0  # request a complete sync on the next timer tick
+            self.poll_count = 0
         except Exception as exc:
+            try:
+                self.connection.disconnect()
+            except Exception:
+                pass
             self.connection_changed.emit(False, "", resource)
             self._report_error("Connection failed", exc)
         finally:

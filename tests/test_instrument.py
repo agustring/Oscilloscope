@@ -1,6 +1,6 @@
 import pytest
 
-from mso2024_remote.instrument.mso2024 import TektronixMSO2024
+from mso2024_remote.instrument.mso2024 import TektronixMSO2024, _strip
 
 
 class FakeResource:
@@ -24,6 +24,11 @@ class FakeConnection:
 
 def scope():
     return TektronixMSO2024(FakeConnection())
+
+
+def test_header_enabled_responses_preserve_complete_values():
+    assert _strip(":HORIZONTAL:SCALE 0.0002") == "0.0002"
+    assert _strip(':CH1:LABEL "CLOCK INPUT"') == "CLOCK INPUT"
 
 
 def test_run_and_single_use_documented_stop_after_sequence():
@@ -60,6 +65,12 @@ def test_horizontal_position_and_delay_select_the_matching_instrument_mode():
         "HORIZONTAL:DELAY:MODE ON",
         "HORIZONTAL:DELAY:TIME -0.00025",
     ]
+
+
+def test_channel_label_is_quoted_and_sanitized():
+    instrument = scope()
+    instrument.set_channel_label(2, 'CLOCK "A"\nINPUT')
+    assert instrument.resource.commands == ['CH2:LABEL "CLOCK \'A\' INPUT"']
 
 
 def test_test_button_uses_documented_front_panel_command():

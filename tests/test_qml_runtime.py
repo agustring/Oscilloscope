@@ -70,6 +70,17 @@ def test_qml_loads_without_warnings_and_switches_compact_layout():
                 QtCore.QCoreApplication.sendEvent(root, event)
                 app.processEvents()
 
+        def drag_horizontal(item, start_fraction, end_fraction):
+            start = item.mapToScene(QtCore.QPointF(item.width() * start_fraction, item.height() / 2))
+            end = item.mapToScene(QtCore.QPointF(item.width() * end_fraction, item.height() / 2))
+            for event in (
+                QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, start, start, start, QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier),
+                QtGui.QMouseEvent(QtCore.QEvent.MouseMove, end, end, end, QtCore.Qt.NoButton, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier),
+                QtGui.QMouseEvent(QtCore.QEvent.MouseButtonRelease, end, end, end, QtCore.Qt.LeftButton, QtCore.Qt.NoButton, QtCore.Qt.NoModifier),
+            ):
+                QtCore.QCoreApplication.sendEvent(root, event)
+                app.processEvents()
+
         channel_position = visual_item("channelPositionKnob1")
         drag_up(channel_position)
         assert scope.channelPosition(1) == 0.1
@@ -122,13 +133,28 @@ def test_qml_loads_without_warnings_and_switches_compact_layout():
         assert scope.selectedChannel == 2
         assert scope.channelEnabledStates[1]
         assert scope.menuContext == "channel"
+        click(visual_item("bottomSoftKey4"))
+        channel_label_dialog = root.findChild(QtCore.QObject, "channelLabelDialog")
+        channel_label_field = root.findChild(QtCore.QObject, "channelLabelField")
+        assert channel_label_dialog is not None and channel_label_dialog.property("visible")
+        assert channel_label_field is not None
+        channel_label_field.setProperty("text", "CLOCK INPUT")
+        assert QtCore.QMetaObject.invokeMethod(channel_label_dialog, "accept")
+        app.processEvents()
+        assert scope.channelLabels[1] == "CLOCK INPUT"
+        assert scope.bottomMenu[4]["value"] == "CLOCK INPUT"
 
         click(visual_item("measureButton"))
         assert scope.menuContext == "measure"
         click(visual_item("bottomSoftKey0"))
         assert scope.sideMenuVisible
+        source_button = visual_item("measurementSource1Channel3")
+        assert source_button.isVisible() and source_button.isEnabled()
+        click(source_button)
+        assert scope.measurementSource == "CH3"
         click(visual_item("sideSoftKey0"))
         assert scope.measurementReadouts[0]["type"] == "Amplitude"
+        assert scope.measurementReadouts[0]["source"] == "CH3"
 
         trigger_marker = visual_item("triggerMarker")
         marker_y = trigger_marker.y()
@@ -140,7 +166,11 @@ def test_qml_loads_without_warnings_and_switches_compact_layout():
         drag_up(inspector, QtCore.QPointF(12, 61))
         assert scope.zoomPosition == 52.0
         drag_up(inspector, QtCore.QPointF(46, 61))
-        assert scope.zoomScale == 0.008
+        assert scope.zoomScale == 0.0004
+        zoom_overview = visual_item("zoomOverview")
+        assert zoom_overview.isVisible()
+        drag_horizontal(zoom_overview, 0.25, 0.75)
+        assert abs(scope.zoomPosition - 75.0) < 1e-6
 
         display = visual_item("scopeDisplay")
         drag_up(display, QtCore.QPointF(display.width() / 2, display.height() / 2))

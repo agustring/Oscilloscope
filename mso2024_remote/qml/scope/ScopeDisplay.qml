@@ -32,9 +32,14 @@ Rectangle { id:root; objectName:"scopeDisplay"; color:ScopeTheme.display; border
  Connections { target:scope; function onMenuChanged(){if(scope.menuContext==="")contextMenu.visible=false} }
  Text { anchors.left:parent.left; anchors.top:parent.top; anchors.margins:8; text:scope.running?"RUN":"STOP"; color:scope.running?ScopeTheme.accent:ScopeTheme.warning; font.bold:true }
  Text { anchors.horizontalCenter:parent.horizontalCenter; anchors.top:parent.top; anchors.topMargin:7; text:"T  ▼  "+scope.triggerLevel.toFixed(2)+" V"; color:ScopeTheme.warning; font.pixelSize:11 }
- Rectangle { visible:scope.zoomEnabled; x:wave.width*0.2; width:wave.width*0.6; y:25; height:18; color:"#18221f"; border.color:"#78857d"
+ Rectangle { id:zoomOverview; objectName:"zoomOverview"; visible:scope.zoomEnabled; x:wave.width*0.2; width:wave.width*0.6; y:25; height:18; color:"#18221f"; border.color:"#78857d"
   Rectangle { width:Math.max(8,parent.width*Math.min(1,scope.zoomScale/Math.max(scope.timeScale,1e-9))); height:parent.height-4; y:2; x:Math.max(0,Math.min(parent.width-width,(scope.zoomPosition/100)*parent.width-width/2)); color:"#596b61"; opacity:0.75 }
   Text { anchors.centerIn:parent; text:"ZOOM OVERVIEW"; color:"#c9d0ca"; font.pixelSize:8 }
+  MouseArea { anchors.fill:parent; cursorShape:Qt.SizeHorCursor
+   onPressed:scope.setZoomPosition(mouseX/width*100)
+   onPositionChanged:if(pressed)scope.setZoomPosition(mouseX/width*100)
+   onWheel:scope.adjustZoom(wheel.angleDelta.y>0?1:-1,(wheel.modifiers&Qt.ShiftModifier)!==0)
+  }
  }
  Repeater { model:[scope.cursorX1,scope.cursorX2]
   Item { visible:scope.cursorFunction==="VBARS"||scope.cursorFunction==="SCREEN"||scope.cursorFunction==="WAVEFORM"; width:11; height:wave.height; y:0; x:Math.max(0,Math.min(wave.width-11,wave.width*(0.5+modelData/(10*scope.timeScale))-5))

@@ -58,6 +58,7 @@ class ScopeController(QtCore.QObject):
     diagnosticsChanged = QtCore.Signal()
     connectionUiChanged = QtCore.Signal()
     fileDialogRequested = QtCore.Signal(str)
+    channelLabelEditRequested = QtCore.Signal(int, str)
 
     def __init__(self, simulation=False, parent=None):
         super().__init__(parent)
@@ -76,6 +77,7 @@ class ScopeController(QtCore.QObject):
         self._bandwidths = ["Full"] * 4
         self._attenuations = [10.0] * 4
         self._inverted = [False] * 4
+        self._labels = [f"CH{channel}" for channel in range(1, 5)]
         self._trigger_kind, self._trigger_source, self._trigger_status = "Edge", "CH1", "AUTO"
         self._trigger_coupling, self._trigger_slope, self._trigger_mode = "DC", "RISE", "AUTO"
         self._pulse_polarity, self._pulse_condition, self._pulse_time = "Positive", "Less Than", 1e-6
@@ -91,7 +93,7 @@ class ScopeController(QtCore.QObject):
         self._measurement_indicator, self._measurement_gating, self._measurement_method = "Off", "Screen", "Auto"
         self._measurements = [{"slot": i, "enabled": False} for i in range(1, 5)]
         self._cursor_state = {"function": "OFF", "mode": "INDEPENDENT", "x1": -0.001, "x2": 0.001, "y1": -0.5, "y2": 0.5, "vdelta": 0.0}
-        self._zoom_enabled, self._zoom_scale, self._zoom_position = False, 0.01, 50.0
+        self._zoom_enabled, self._zoom_scale, self._zoom_position = False, 5e-4, 50.0
         self._inspector_playing = False
         self._search_enabled, self._search_kind = False, "Edge"
         self._search_source, self._search_slope, self._search_level = "CH1", "Rising", 0.0
@@ -147,6 +149,8 @@ class ScopeController(QtCore.QObject):
     def channelScales(self): return self._scales
     @QtCore.Property('QVariantList', notify=stateChanged)
     def channelPositions(self): return self._positions
+    @QtCore.Property('QVariantList', notify=stateChanged)
+    def channelLabels(self): return self._labels
     @QtCore.Property(float, notify=stateChanged)
     def timeScale(self): return self._time_scale
     @QtCore.Property(float, notify=stateChanged)
@@ -194,6 +198,12 @@ class ScopeController(QtCore.QObject):
         if self._menu == "measure" and self._menu_selection == 0:
             return f"{self._measurement_source} → {self._measurement_source2}" if self._selected_measurement_type() in {"Delay", "Phase"} else self._measurement_source
         return "—"
+    @QtCore.Property(str, notify=menuChanged)
+    def measurementSource(self): return self._measurement_source
+    @QtCore.Property(str, notify=menuChanged)
+    def measurementSource2(self): return self._measurement_source2
+    @QtCore.Property(bool, notify=menuChanged)
+    def measurementUsesTwoSources(self): return self._selected_measurement_type() in {"Delay", "Phase"}
     @QtCore.Property('QVariantList', notify=stateChanged)
     def measurementReadouts(self):
         result = []
@@ -250,41 +260,48 @@ class ScopeController(QtCore.QObject):
     @QtCore.Slot(int, result=float)
     def channelPosition(self, channel): return self._positions[channel - 1]
 
+    @staticmethod
+    def _unavailable(title, value, reason="Not implemented in this remote panel"):
+        return {"title": title, "value": value, "enabled": False, "reason": reason}
+
     def _bottom_menu(self):
         ch = self._selected - 1
         if self._menu == "channel":
-            return [{"title": "Coupling", "value": self._couplings[ch]}, {"title": "Bandwidth", "value": self._bandwidths[ch]}, {"title": "Probe", "value": f"{self._attenuations[ch]:g}X"}, {"title": "Invert", "value": "On" if self._inverted[ch] else "Off"}, {"title": "Label", "value": f"CH{self._selected}"}, {"title": "More", "value": ""}]
+            return [{"title": "Coupling", "value": self._couplings[ch]}, {"title": "Bandwidth", "value": self._bandwidths[ch]}, {"title": "Probe", "value": f"{self._attenuations[ch]:g}X"}, {"title": "Invert", "value": "On" if self._inverted[ch] else "Off"}, {"title": "Label", "value": self._labels[ch]}, self._unavailable("More", "")]
         if self._menu == "trigger":
             return self._trigger_menu()
         if self._menu == "acquire":
             position = self._format_seconds(self._horizontal_delay) if self._delay_mode else f"{self._horizontal_position:g} %"
-            return [{"title": "Mode", "value": self._acquisition_mode.title()}, {"title": "Record", "value": "1M" if self._record_length == 1_000_000 else "100k"}, {"title": "Delay", "value": "On" if self._delay_mode else "Off"}, {"title": "Position", "value": position}, {"title": "Waveform", "value": "Display"}, {"title": "Details", "value": "Acquire"}]
+            return [{"title": "Mode", "value": self._acquisition_mode.title()}, {"title": "Record", "value": "1M" if self._record_length == 1_000_000 else "100k"}, {"title": "Delay", "value": "On" if self._delay_mode else "Off"}, {"title": "Position", "value": position}, self._unavailable("Waveform", "Display"), self._unavailable("Details", "Acquire")]
         if self._menu == "measure":
             return [{"title": "Add", "value": "Measurement"}, {"title": "Remove", "value": "Measurement"}, {"title": "Indicators", "value": self._measurement_indicator}, {"title": "Gating", "value": self._measurement_gating}, {"title": "High-Low", "value": self._measurement_method}, {"title": "Cursors", "value": "Configure"}]
         if self._menu == "cursor":
             cursor_label = {"OFF": "Off", "VBARS": "Vertical Bars", "HBARS": "Horizontal Bars", "SCREEN": "Screen", "WAVEFORM": "Waveform"}.get(self.cursorFunction, self.cursorFunction)
             link = self._cursor_state.get("mode", "INDEPENDENT").title() if self.cursorFunction == "WAVEFORM" else "N/A"
-            return [{"title": "Function", "value": cursor_label}, {"title": "Bring On", "value": "Screen"}, {"title": "Link", "value": link}, {"title": "Source", "value": f"CH{self._selected}"}, {"title": "Units", "value": "Base"}, {"title": "", "value": ""}]
+            bring_on = {"title": "Bring On", "value": "Screen"} if self.cursorFunction != "OFF" else self._unavailable("Bring On", "Screen", "Enable cursors first")
+            link_item = {"title": "Link", "value": link} if self.cursorFunction == "WAVEFORM" else self._unavailable("Link", link, "Available for waveform cursors")
+            return [{"title": "Function", "value": cursor_label}, bring_on, link_item, self._unavailable("Source", f"CH{self._selected}", "Cursor source follows the selected channel"), self._unavailable("Units", "Base", "Units follow the cursor function"), self._unavailable("", "")]
         if self._menu == "search":
             return self._search_menu()
         if self._menu == "test":
-            return [{"title": "Application Test", "value": "Option dependent"}, {"title": "Control", "value": "Instrument menu"}]
+            return [self._unavailable("Application Test", "Option dependent", "Use the physical instrument Test menu"), self._unavailable("Control", "Instrument menu", "Use the physical instrument Test menu")]
         if self._menu == "utility":
-            return [{"title": "Utility Page", "value": "Config"}, {"title": "Language", "value": self._language}, {"title": "Set Date & Time", "value": ""}, {"title": "TekSecure", "value": "Erase Memory"}, {"title": "About", "value": ""}]
+            return [self._unavailable("Utility Page", "Config"), {"title": "Language", "value": self._language}, self._unavailable("Set Date & Time", ""), self._unavailable("TekSecure", "Erase Memory", "Destructive memory erase is not exposed remotely"), self._unavailable("About", "")]
         if self._menu == "save":
-            return [{"title": "Save Screen", "value": "Image"}, {"title": "Save", "value": "Waveform"}, {"title": "Save", "value": "Setup"}, {"title": "Recall", "value": "Waveform"}, {"title": "Recall", "value": "Setup"}, {"title": "Assign Save", "value": "Setup"}, {"title": "File", "value": "Utilities"}]
+            return [{"title": "Save Screen", "value": "Image"}, {"title": "Save", "value": "Waveform"}, {"title": "Save", "value": "Setup"}, {"title": "Recall", "value": "Waveform"}, {"title": "Recall", "value": "Setup"}, self._unavailable("Assign Save", "Setup"), self._unavailable("File", "Utilities")]
         if self._menu == "math":
-            return [{"title": "Dual Wfm", "value": "Math"}, {"title": "FFT", "value": ""}, {"title": "M", "value": "Label"}]
+            return [{"title": "Dual Wfm", "value": "Math"}, {"title": "FFT", "value": ""}, self._unavailable("M", "Label")]
         if self._menu == "reference":
             return [{"title": "R1", "value": "On" if self._references[0] else "Off"}, {"title": "R2", "value": "On" if self._references[1] else "Off"}]
         if self._menu == "bus":
-            return [{"title": f"B{self._bus}", "value": self._bus_type}, {"title": "Define", "value": "Inputs"}, {"title": "Thresholds", "value": ""}, {"title": f"B{self._bus}", "value": "Label"}, {"title": "Bus", "value": "Display"}, {"title": "Event", "value": "Table"}]
+            return [{"title": f"B{self._bus}", "value": self._bus_type}, self._unavailable("Define", "Inputs"), self._unavailable("Thresholds", ""), self._unavailable(f"B{self._bus}", "Label"), self._unavailable("Bus", "Display"), self._unavailable("Event", "Table")]
         return []
 
     def _trigger_menu(self):
         mode = {"title": "Mode/Holdoff", "value": self._trigger_mode.title()}
         if self._trigger_kind == "Edge":
-            return [{"title": "Type", "value": self._trigger_kind}, {"title": "Source", "value": self._trigger_source}, {"title": "Coupling", "value": self._trigger_coupling}, {"title": "Slope", "value": "Rising" if self._trigger_slope == "RISE" else "Falling"}, {"title": "Level", "value": f"{self._trigger_level:.2f} V"}, mode]
+            level = self._unavailable("Level", f"{self._trigger_level:.2f} V", "Adjust with the Trigger Level knob or marker")
+            return [{"title": "Type", "value": self._trigger_kind}, {"title": "Source", "value": self._trigger_source}, {"title": "Coupling", "value": self._trigger_coupling}, {"title": "Slope", "value": "Rising" if self._trigger_slope == "RISE" else "Falling"}, level, mode]
         if self._trigger_kind in {"Pulse Width", "Runt", "Rise/Fall Time"}:
             quantity = "Delta Time" if self._trigger_kind == "Rise/Fall Time" else "Width"
             return [{"title": "Type", "value": self._trigger_kind}, {"title": "Source", "value": self._trigger_source}, {"title": "Polarity", "value": self._pulse_polarity}, {"title": "Trigger When", "value": self._pulse_condition}, {"title": quantity, "value": self._format_trigger_time(self._pulse_time)}, mode]
@@ -297,7 +314,8 @@ class ScopeController(QtCore.QObject):
             data = f"{self._setup_data} {self._setup_data_threshold:g} V"
             return [{"title": "Type", "value": self._trigger_kind}, {"title": "Clock", "value": clock}, {"title": "Clock Edge", "value": self._setup_clock_edge}, {"title": "Data", "value": data}, {"title": "Setup / Hold", "value": times}, mode]
         if self._trigger_kind == "Video":
-            return [{"title": "Type", "value": self._trigger_kind}, {"title": "Source", "value": self._trigger_source}, {"title": "Polarity", "value": self._video_polarity}, {"title": "Standard", "value": self._video_standard}, {"title": "Level", "value": f"{self._trigger_level:.2f} V"}, mode]
+            level = self._unavailable("Level", f"{self._trigger_level:.2f} V", "Adjust with the Trigger Level knob or marker")
+            return [{"title": "Type", "value": self._trigger_kind}, {"title": "Source", "value": self._trigger_source}, {"title": "Polarity", "value": self._video_polarity}, {"title": "Standard", "value": self._video_standard}, level, mode]
         return [{"title": "Type", "value": self._trigger_kind}, {"title": "Bus Source", "value": f"B{self._bus}"}, {"title": "Trigger On", "value": "Bus Event"}, {"title": "Qualifier", "value": "Instrument"}, {"title": "Status", "value": "Option dependent"}, mode]
 
     def _search_menu(self):
@@ -519,8 +537,13 @@ class ScopeController(QtCore.QObject):
         self._sync_side_selection(); self.menuChanged.emit()
     @QtCore.Slot(int)
     def pressMenuItem(self, index):
+        menu = self._bottom_menu()
+        if not 0 <= index < len(menu) or menu[index].get("enabled") is False:
+            return
         self.selectMenuItem(index)
-        if self._menu == "acquire" and index == 3:
+        if self._menu == "channel" and index == 4:
+            self.channelLabelEditRequested.emit(self._selected, self._labels[self._selected - 1])
+        elif self._menu == "acquire" and index == 3:
             if self._delay_mode:
                 self._horizontal_delay = 0.0; self._queue("horizontal_delay", "set_delay", [0.0])
             else:
@@ -568,6 +591,30 @@ class ScopeController(QtCore.QObject):
                 if self._choice_available(choices[self._side_selection]):
                     break
             self.menuChanged.emit()
+    @QtCore.Slot(int, int)
+    def setMeasurementSource(self, source_number, channel):
+        if source_number not in {1, 2} or not 1 <= channel <= 4:
+            return
+        value = f"CH{channel}"
+        if source_number == 1:
+            previous = self._measurement_source
+            self._measurement_source = value
+            if self.measurementUsesTwoSources and self._measurement_source2 == value:
+                self._measurement_source2 = previous
+        elif self.measurementUsesTwoSources:
+            previous = self._measurement_source2
+            self._measurement_source2 = value
+            if self._measurement_source == value:
+                self._measurement_source = previous
+        self.menuChanged.emit()
+    @QtCore.Slot(int, str)
+    def setChannelLabel(self, channel, label):
+        if not 1 <= channel <= 4:
+            return
+        clean = str(label).replace("\r", " ").replace("\n", " ")[:30]
+        self._labels[channel - 1] = clean
+        self.stateChanged.emit(); self.menuChanged.emit()
+        self._queue(f"label{channel}", "set_channel_label", [channel, clean])
     @QtCore.Slot()
     def applyMultipurpose(self):
         choices = self._side_choices()
@@ -612,7 +659,9 @@ class ScopeController(QtCore.QObject):
     def connectResource(self, resource):
         if self._backend:
             self._wave_timer.stop(); self._simulation = False
-            self._backend.request_connect.emit(resource, 5000); self.stateChanged.emit()
+            self._pending.clear(); self._flush_timer.stop(); self._connected = False
+            self._backend.request_connect.emit(resource, 5000)
+            self.stateChanged.emit(); self.connectionUiChanged.emit()
     @QtCore.Slot()
     def enableSimulation(self):
         if self._backend and self._connected: self._backend.request_disconnect.emit()
@@ -624,6 +673,21 @@ class ScopeController(QtCore.QObject):
         if bus in {1, 2}: self._bus = bus; self.openMenu("bus")
     @QtCore.Slot()
     def defaultSetup(self):
+        if self._simulation:
+            self._selected, self._enabled = 1, [True, False, False, False]
+            self._scales, self._positions = [0.5] * 4, [0.0] * 4
+            self._labels = [f"CH{channel}" for channel in range(1, 5)]
+            self._time_scale, self._horizontal_position, self._horizontal_delay = 1e-3, 50.0, 0.0
+            self._delay_mode, self._trigger_level, self._running = False, 0.0, True
+            self._trigger_kind, self._trigger_source, self._trigger_status = "Edge", "CH1", "AUTO"
+            self._acquisition_mode, self._record_length = "SAMPLE", 100_000
+            self._measurements = [{"slot": i, "enabled": False} for i in range(1, 5)]
+            self._cursor_state["function"] = "OFF"
+            self._zoom_enabled, self._zoom_scale, self._zoom_position = False, 5e-4, 50.0
+            self._search_enabled, self._references = False, [False, False]
+            self._menu, self._menu_selection, self._side_selection = "channel", 0, 0
+            self._simulate_frame(); self.stateChanged.emit(); self.menuChanged.emit()
+            return
         self._queue("default_setup", "default_setup", [])
     @QtCore.Slot(str, result=str)
     def localFilePath(self, url):
@@ -690,17 +754,28 @@ class ScopeController(QtCore.QObject):
     @QtCore.Slot()
     def toggleZoom(self):
         self._zoom_enabled = not self._zoom_enabled
+        if self._zoom_enabled and self._zoom_scale >= self._time_scale:
+            self._zoom_scale = max(TIME_STEPS[0], self._time_scale * 0.5)
+            self._queue("zoom_scale", "set_zoom_scale", [self._zoom_scale])
         self.stateChanged.emit(); self._queue("zoom_enabled", "set_zoom_enabled", [self._zoom_enabled])
     @QtCore.Slot(int, bool)
     def adjustZoom(self, direction, fine=False):
         self._zoom_enabled = True
         factor = (0.95 if direction > 0 else 1.0 / 0.95) if fine else (0.8 if direction > 0 else 1.25)
-        self._zoom_scale = max(1e-3, min(5.0, self._zoom_scale * factor))
+        current = min(self._zoom_scale, self._time_scale)
+        self._zoom_scale = max(TIME_STEPS[0], min(self._time_scale, current * factor))
         self.stateChanged.emit(); self._queue("zoom_enabled", "set_zoom_enabled", [True]); self._queue("zoom_scale", "set_zoom_scale", [self._zoom_scale])
     @QtCore.Slot(int, bool)
     def panZoom(self, direction, fine=False):
         self._zoom_position = max(0.0, min(100.0, self._zoom_position + direction * (0.5 if fine else 2.0)))
         self.stateChanged.emit(); self._queue("zoom_position", "set_zoom_position", [self._zoom_position])
+    @QtCore.Slot(float)
+    def setZoomPosition(self, position):
+        self._zoom_enabled = True
+        self._zoom_position = max(0.0, min(100.0, float(position)))
+        self.stateChanged.emit()
+        self._queue("zoom_enabled", "set_zoom_enabled", [True])
+        self._queue("zoom_position", "set_zoom_position", [self._zoom_position])
     @QtCore.Slot(str)
     def moveMark(self, direction): self._queue("mark_move", "move_to_mark", [direction])
     @QtCore.Slot()
@@ -939,6 +1014,7 @@ class ScopeController(QtCore.QObject):
             self._bandwidths[ch - 1] = "20 MHz" if "TWENTY" in bandwidth else "Full"
             self._attenuations[ch - 1] = float(item.get("attenuation", self._attenuations[ch - 1]))
             self._inverted[ch - 1] = bool(item.get("invert", self._inverted[ch - 1]))
+            self._labels[ch - 1] = str(item.get("label", self._labels[ch - 1]))
         horizontal = state.get("horizontal", {})
         self._time_scale = float(horizontal.get("scale", self._time_scale))
         self._horizontal_position = float(horizontal.get("position", self._horizontal_position))

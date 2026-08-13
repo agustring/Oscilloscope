@@ -104,7 +104,6 @@ class VisaConnection:
             identity = str(resource.query("*IDN?")).strip()  # SCPI: *IDN?
             if "TEKTRONIX" not in identity.upper() or "MSO2024" not in identity.upper():
                 raise RuntimeError(f"Resource is not a Tektronix MSO2024: {identity}")
-            resource.write("HEADER OFF")  # SCPI: HEADer OFF
             self.resource = resource
             self.resource_name = resource_name
             self.identity = identity

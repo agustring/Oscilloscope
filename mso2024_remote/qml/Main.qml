@@ -27,12 +27,20 @@ ApplicationWindow {
  Shortcut { sequence:"2"; enabled:scope.connected; onActivated:scope.pressChannel(2) }
  Shortcut { sequence:"3"; enabled:scope.connected; onActivated:scope.pressChannel(3) }
  Shortcut { sequence:"4"; enabled:scope.connected; onActivated:scope.pressChannel(4) }
- Connections { target:scope; function onFileDialogRequested(kind){if(kind==="screen-save")screenSaveDialog.open();else if(kind==="waveform-save")waveformSaveDialog.open();else if(kind==="waveform-load")waveformLoadDialog.open()} }
+ Connections {
+  target:scope
+  function onFileDialogRequested(kind){if(kind==="screen-save")screenSaveDialog.open();else if(kind==="waveform-save")waveformSaveDialog.open();else if(kind==="waveform-load")waveformLoadDialog.open()}
+  function onChannelLabelEditRequested(channel,currentLabel){channelLabelDialog.channel=channel;channelLabelField.text=currentLabel;channelLabelField.selectAll();channelLabelDialog.open()}
+ }
  FileDialog { id:screenSaveDialog; title:"Save remote panel image"; fileMode:FileDialog.SaveFile; nameFilters:["PNG images (*.png)"]; defaultSuffix:"png"
   onAccepted:scope.savePanelImage(selectedFile.toString(),window)
  }
  FileDialog { id:waveformSaveDialog; title:"Export selected waveform"; fileMode:FileDialog.SaveFile; nameFilters:["CSV waveforms (*.csv)"]; defaultSuffix:"csv"; onAccepted:scope.exportWaveform(selectedFile.toString()) }
  FileDialog { id:waveformLoadDialog; title:"Load CSV as local reference"; fileMode:FileDialog.OpenFile; nameFilters:["CSV waveforms (*.csv)"]; onAccepted:scope.loadReferenceWaveform(selectedFile.toString()) }
+ Dialog { id:channelLabelDialog; objectName:"channelLabelDialog"; property int channel:1; title:"CH"+channel+" waveform label"; modal:true; anchors.centerIn:parent; standardButtons:Dialog.Ok|Dialog.Cancel
+  TextField { id:channelLabelField; objectName:"channelLabelField"; width:300; maximumLength:30; placeholderText:"Channel label"; selectByMouse:true }
+  onAccepted:scope.setChannelLabel(channel,channelLabelField.text)
+ }
 
  ColumnLayout { anchors.fill:parent; anchors.margins:10; spacing:8
   Rectangle { Layout.fillWidth:true; Layout.preferredHeight:42; color:"#1c2123"; border.color:"#3e4749"

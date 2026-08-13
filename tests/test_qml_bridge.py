@@ -76,6 +76,31 @@ def test_simulation_single_acquires_one_frame_and_autoset_restores_view():
     scope.close()
 
 
+def test_simulation_default_setup_restores_front_panel_state():
+    scope = controller()
+    scope.selectChannel(3)
+    scope.adjustChannelScale(3, 1)
+    scope.adjustChannelPosition(3, 1)
+    scope.openMenu("measure")
+    scope.selectSideItem(MEASUREMENT_CHOICES.index("Frequency"))
+    scope.adjustZoom(1)
+
+    scope.defaultSetup()
+
+    assert scope.selectedChannel == 1
+    assert scope.channelEnabledStates == [True, False, False, False]
+    assert scope.channelScales == [0.5] * 4
+    assert scope.channelPositions == [0.0] * 4
+    assert scope.timeScale == 1e-3
+    assert scope.horizontalPosition == 50.0
+    assert not scope.delayMode
+    assert scope.triggerLevel == 0.0
+    assert scope.measurementReadouts == []
+    assert not scope.zoomEnabled
+    assert scope.menuContext == "channel"
+    scope.close()
+
+
 def test_display_waveform_is_bounded_without_losing_raw_point_diagnostics():
     scope = controller()
     values = list(range(5000))
@@ -99,15 +124,15 @@ def test_wave_inspector_playback_updates_simulated_pan_position():
 
 def test_wave_inspector_readback_and_fine_adjustments_update_state():
     scope = controller()
-    scope._snapshot({"zoom": {"enabled": True, "scale": 0.02, "position": 40.0}})
+    scope._snapshot({"zoom": {"enabled": True, "scale": 0.0005, "position": 40.0}})
     assert scope.zoomEnabled
-    assert scope.zoomScale == 0.02
+    assert scope.zoomScale == 0.0005
     assert scope.zoomPosition == 40.0
 
     scope.panZoom(1, True)
     assert scope.zoomPosition == 40.5
     scope.adjustZoom(1, True)
-    assert scope.zoomScale == 0.019
+    assert scope.zoomScale == 0.000475
     scope.close()
 
 
@@ -155,7 +180,9 @@ def test_test_button_opens_option_dependent_menu_and_queues_front_panel_press():
     scope._queue = lambda key, method, args: calls.append((key, method, args))
     scope.openTestMenu()
     assert scope.menuContext == "test"
-    assert scope.bottomMenu[0] == {"title": "Application Test", "value": "Option dependent"}
+    assert scope.bottomMenu[0]["title"] == "Application Test"
+    assert scope.bottomMenu[0]["value"] == "Option dependent"
+    assert not scope.bottomMenu[0]["enabled"]
     assert calls[-1][1:] == ("open_test_menu", [])
     scope.close()
 
@@ -355,6 +382,30 @@ def test_measurement_knobs_choose_type_and_source():
     scope.close()
 
 
+def test_measurement_source_buttons_support_single_and_dual_source_types():
+    scope = controller()
+    calls = []
+    scope._queue = lambda key, method, args: calls.append((key, method, args))
+    scope.openMenu("measure")
+    scope.selectMenuItem(0)
+
+    scope.setMeasurementSource(1, 3)
+    assert scope.measurementSource == "CH3"
+    scope.selectSideItem(MEASUREMENT_CHOICES.index("Frequency"))
+    assert calls[-1][1:] == ("configure_measurement", [1, "FREQUENCY", "CH3", True, None])
+
+    scope._side_selection = MEASUREMENT_CHOICES.index("Delay")
+    scope.menuChanged.emit()
+    assert scope.measurementUsesTwoSources
+    scope.setMeasurementSource(1, 2)
+    scope.setMeasurementSource(2, 4)
+    assert scope.measurementSource == "CH2"
+    assert scope.measurementSource2 == "CH4"
+    scope.applyMultipurpose()
+    assert calls[-1][1:] == ("configure_measurement", [2, "DELAY", "CH2", True, "CH4"])
+    scope.close()
+
+
 def test_measurement_menu_exposes_every_single_source_measurement():
     assert set(MEASUREMENT_CHOICES) == set(MEASUREMENT_TYPES)
 
@@ -454,6 +505,35 @@ def test_selected_channel_button_can_disable_trace():
     assert scope.channelEnabled(1)
     scope.pressChannel(1)
     assert not scope.channelEnabled(1)
+    scope.close()
+
+
+def test_channel_label_softkey_opens_editor_and_applies_verified_command():
+    scope = controller()
+    requests = []
+    calls = []
+    scope.channelLabelEditRequested.connect(lambda channel, label: requests.append((channel, label)))
+    scope._queue = lambda key, method, args: calls.append((key, method, args))
+    scope.selectChannel(2)
+    scope.pressMenuItem(4)
+    assert requests == [(2, "CH2")]
+
+    scope.setChannelLabel(2, "CLOCK\nINPUT")
+    assert scope.channelLabels[1] == "CLOCK INPUT"
+    assert scope.bottomMenu[4]["value"] == "CLOCK INPUT"
+    assert calls[-1] == ("label2", "set_channel_label", [2, "CLOCK INPUT"])
+    scope.close()
+
+
+def test_unavailable_bottom_softkeys_do_not_change_menu_selection():
+    scope = controller()
+    scope.openMenu("acquire")
+    scope.selectMenuItem(1)
+    assert not scope.bottomMenu[4]["enabled"]
+
+    scope.pressMenuItem(4)
+
+    assert scope.menuSelection == 1
     scope.close()
 
 

@@ -66,7 +66,7 @@ SEARCH_KINDS = {
 def _strip(value: str) -> str:
     value = value.strip()
     if " " in value and value.startswith(":"):
-        value = value.rsplit(" ", 1)[-1]
+        value = value.split(" ", 1)[1]
     return value.strip().strip('"')
 
 
