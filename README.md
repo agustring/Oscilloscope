@@ -1,6 +1,6 @@
 # Tektronix MSO2024 Remote
 
-A Python desktop remote front panel for the original Tektronix **MSO2024**. The
+A Qt Quick/QML remote front panel for the original Tektronix **MSO2024**. The
 application discovers the instrument through VISA, verifies it with `*IDN?`,
 downloads properly scaled binary waveforms, and sends front-panel changes back
 to the physical oscilloscope.
@@ -8,9 +8,11 @@ to the physical oscilloscope.
 ## Features
 
 - Automatic VISA discovery and strict Tektronix MSO2024 identity check
-- Responsive PySide6 GUI with all VISA access isolated in a worker thread
+- Instrument-style Qt Quick interface with custom rotary encoders and bezel menus
+- Responsive PySide6 bridge with all VISA access isolated in a worker thread
+- Hardware-free simulation with sine, square, triangle, and composite/noise traces
 - CH1–CH4 display, enable, scale, position, coupling, probe attenuation,
-  20 MHz bandwidth limit, invert, and channel label
+  20 MHz bandwidth limit, and invert
 - Signed, little-endian binary waveform transfer with IEEE block parsing and
   `XINCR`, `XZERO`, `PT_OFF`, `YMULT`, `YOFF`, and `YZERO` conversion
 - Time/division, trigger position, delay, and 100 k/1 M record length
@@ -18,13 +20,21 @@ to the physical oscilloscope.
 - Wheel changes the selected channel's real V/div; Ctrl+wheel changes the
   oscilloscope's real time/div
 - Horizontal dragging changes instrument delay; double-click centers the view
-- Edge, pulse-width, runt, transition-time, logic, setup/hold, video, and
-  option-dependent serial-bus trigger selection
-- Four hardware measurement slots using the instrument's own measurement engine
+- Type-specific Edge, Pulse Width, Runt, transition-time, Logic, Setup/Hold,
+  Video, and capability-gated Bus trigger menus backed by verified commands
+- Four hardware measurement slots, all documented measurement types including
+  two-source Delay/Phase, indicators, gating, and high/low calculation methods
 - Time/voltage cursors that can also be dragged on the waveform plot
-- Full-resolution CSV waveform export
-- SCPI console with Up/Down command history
-- Diagnostics with last command, last response, VISA errors, and `ALLEv?`
+- Concentric Wave Inspector zoom/pan control, play/pause, and mark navigation
+  using documented MSO2000 commands
+- Independent per-type Search criteria for Edge, pulse families, Logic Pattern,
+  Setup/Hold, and capability-gated Bus searches
+- Dedicated Test key using the documented front-panel command, with its
+  application-module-dependent status stated explicitly
+- PNG remote-panel capture, full-resolution hardware CSV export, and local CSV
+  recall as a toggleable reference trace
+- Diagnostics with last command/response, queue depth, acquisition rate,
+  transfer timing, point count, render-update rate, and VISA errors
 - Staggered synchronization for front-panel changes made on the oscilloscope
 
 ## Requirements
@@ -53,6 +63,16 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
+For UI development without connected hardware:
+
+```powershell
+python main.py --simulation
+```
+
+The virtual front panel supports wheel and drag knob input, Shift fine mode,
+waveform wheel scaling, Ctrl+wheel timebase control, contextual bezel menus,
+F11 fullscreen, and Ctrl+Shift+D diagnostics.
+
 On Linux or macOS, activate with `source .venv/bin/activate` instead.
 
 Connect and turn on the oscilloscope before starting the application. The app
@@ -75,16 +95,17 @@ changing a Windows USB driver can prevent vendor VISA software from using it.
 
 ## Controls
 
-- Click a trace or select its channel tab to choose the active channel.
+- Press a channel key or its on-screen marker to choose the active channel.
 - Wheel over the plot changes that channel's hardware V/div in 1-2-5 steps.
 - Ctrl+wheel changes the hardware time/div in 1-2-5 steps.
 - Drag horizontally to update horizontal delay on the instrument.
-- Double-click the plot to restore channel position to zero and trigger
-  position to 50%.
+- Double-click the plot to center channel/horizontal position; double-click the
+  trigger or channel marker to center that marker.
 - Choose cursor type in **Cursors**. Drag orange plot lines to change the
   physical scope cursors.
-- **SAVE WAVEFORM** downloads the selected channel at full resolution and
-  writes `time_s,voltage_V` CSV columns.
+- Right-click the waveform for channel enable, coupling, probe, invert, and
+  measurement shortcuts.
+- Use the header mode key to switch between **Front Panel** and **Enhanced**.
 
 ## Instrument-specific limitations
 
@@ -99,14 +120,19 @@ These are intentional and are not silently emulated on the PC:
   record can be 125,000 or 1,250,000 for some horizontal settings.
 - Edge trigger slope supports Rise and Fall, not Either. Transition trigger does
   support Either polarity.
-- Serial-bus trigger requires the appropriate DPO2AUTO or DPO2EMBD application
-  module and a configured B1/B2 bus.
+- Serial-bus trigger requires DPO2AUTO, DPO2EMBD, or DPO2COMP as appropriate
+  and a configured B1/B2 bus. Modules reported by instrument identity unlock
+  automatically; unconfirmed module features remain disabled.
 - The instrument exposes four automatic measurement slots, so the GUI allows
   four simultaneous measurements.
-- Delay and Phase use the second source selector shown beside the primary source.
-  Their advanced edge-direction settings remain available through the SCPI
-  console. Logic pattern/state and Setup/Hold panels expose the documented
-  analog/digital sources, input states, clock edges, thresholds, and time values.
+- Delay and Phase use an ordered source pair assigned to Multipurpose B. Their
+  advanced per-edge direction settings retain the instrument defaults.
+- Logic trigger exposes analog presets, D0-D3 digital patterns, and thresholds
+  for D0-D15. Setup/Hold trigger and Search expose D0-D15 sources; trigger
+  source choices include TTL (1.4 V) and ECL (-1.3 V) threshold presets.
+- PC waveform recall displays a CSV as local R1; it does not claim that a local
+  computer path is accessible to the oscilloscope filesystem. PNG capture saves
+  the rendered remote panel rather than issuing an instrument hardcopy command.
 
 ## SCPI and waveform implementation
 
@@ -155,7 +181,9 @@ the particular scope firmware and installed option modules.
 mso2024_remote/
 ├── instrument/       VISA session, SCPI façade, waveform parser
 ├── workers/          thread-confined polling and acquisition worker
-├── gui/              focused PySide6 panels and waveform view
+├── qml/              Qt Quick panel, display, menus, and custom controls
+├── qml_bridge.py     shared QML state, simulation, and hardware bridge
+├── gui/              legacy QWidget implementation retained during migration
 ├── controller.py     queued GUI/worker bridge
 └── main.py           application bootstrap
 tests/                unit tests without physical hardware

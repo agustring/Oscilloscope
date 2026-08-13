@@ -1,0 +1,2 @@
+singleton ScopeTheme 1.0 ScopeTheme.qml
+SideBezelMenu 1.0 menus/SideBezelMenu.qml

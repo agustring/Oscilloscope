@@ -22,5 +22,8 @@ mso2024-remote = "mso2024_remote.main:main"
 [tool.setuptools.packages.find]
 include = ["mso2024_remote*"]
 
+[tool.setuptools.package-data]
+mso2024_remote = ["qml/**/*.qml", "qml/qmldir"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

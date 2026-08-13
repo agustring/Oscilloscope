@@ -32,6 +32,11 @@ class InstrumentWorker(QtCore.QObject):
         self.next_channel = 1
         self.enabled_channels = {1}
         self.busy = False
+        self.last_transfer_ms = 0.0
+        self.waveform_points = 0
+        self.acquisition_rate = 0.0
+        self._rate_started = time.perf_counter()
+        self._rate_count = 0
 
     @QtCore.Slot()
     def initialize(self) -> None:
@@ -59,6 +64,10 @@ class InstrumentWorker(QtCore.QObject):
                 "last_response": scope.last_response if scope else "",
                 "error": error,
                 "timestamp": time.strftime("%H:%M:%S"),
+                "scpi_queue": 1 if self.busy else 0,
+                "acquisition_rate": self.acquisition_rate,
+                "waveform_points": self.waveform_points,
+                "transfer_ms": self.last_transfer_ms,
             }
         )
 
@@ -222,7 +231,15 @@ class InstrumentWorker(QtCore.QObject):
                 channel = self.next_channel
                 self.next_channel = channel % 4 + 1
                 if channel in self.enabled_channels:
+                    transfer_started = time.perf_counter()
                     waveform = scope.waveform(channel, assume_enabled=True)
+                    self.last_transfer_ms = (time.perf_counter() - transfer_started) * 1000.0
+                    self.waveform_points = len(waveform.time)
+                    self._rate_count += 1
+                    elapsed = time.perf_counter() - self._rate_started
+                    if elapsed >= 1.0:
+                        self.acquisition_rate = self._rate_count / elapsed
+                        self._rate_count, self._rate_started = 0, time.perf_counter()
                     self.waveform_ready.emit(
                         channel, waveform.time, waveform.voltage, waveform.preamble
                     )
