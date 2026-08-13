@@ -180,8 +180,10 @@ sending the latest SCPI command.
 
 - QML contains no SCPI strings. The Python driver remains the only SCPI layer.
 - Original-series manual 077-0097-01 is authoritative for every exposed value.
-- Query installed options before enabling serial bus UI; do not infer options
-  merely from the model name.
+- The original-series programmer manual does not document `*OPT?` or another
+  general installed-option inventory query. Keep serial choices disabled unless
+  the connected instrument reports a DPO2 module in available identity/capability
+  data; never infer options merely from the model name.
 - UI changes are optimistic but provisional until a worker-thread query confirms
   instrument state. Rejected values revert to the confirmed state.
 - VISA work stays off the GUI thread and high-frequency controls are coalesced.

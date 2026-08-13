@@ -15,7 +15,7 @@ Rectangle {
    id:entryColumn; width:listView.width-(root.entries.length>8?10:0); spacing:4
    Repeater {
     model:root.entries
-    ScopeButton { width:entryColumn.width; height:38; text:modelData.label; active:modelData.selected; enabled:modelData.enabled; opacity:enabled?1:0.42; help:modelData.reason; onClicked:scope.selectSideItem(index) }
+    ScopeButton { objectName:"sideSoftKey"+index; width:entryColumn.width; height:38; text:modelData.label; active:modelData.selected; enabled:modelData.enabled; opacity:enabled?1:0.42; help:modelData.reason; onClicked:scope.selectSideItem(index) }
    }
   }
  }

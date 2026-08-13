@@ -109,7 +109,7 @@ class InstrumentWorker(QtCore.QObject):
             identity = self.connection.connect(resource)
             self.connection_changed.emit(True, identity, resource)
             self._emit_diagnostics()
-            self.poll_count = 3  # request a complete sync on the next timer tick
+            self.poll_count = 0  # request a complete sync on the next timer tick
         except Exception as exc:
             self.connection_changed.emit(False, "", resource)
             self._report_error("Connection failed", exc)
@@ -147,12 +147,14 @@ class InstrumentWorker(QtCore.QObject):
             self.operation_done.emit(method, result)
             self._emit_diagnostics()
             if method.startswith("set_") or method in {"autoset", "run", "stop", "single"}:
-                self.poll_count = 3
+                self.poll_count = 0
             if method == "set_channel_enabled" and len(args) >= 2:
                 channel, enabled = int(args[0]), bool(args[1])
                 (self.enabled_channels.add if enabled else self.enabled_channels.discard)(channel)
         except Exception as exc:
             self._report_error(method, exc)
+            if self.connection and self.connection.connected:
+                self.poll_count = 0
         finally:
             self.busy = False
 

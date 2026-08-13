@@ -25,6 +25,67 @@ def test_timebase_detents_respect_mso2024_range():
     assert _step(TIME_STEPS, 1e-3, 1) == 5e-4
 
 
+def test_horizontal_position_knob_respects_delay_mode_and_updates_acquire_menu():
+    scope = controller()
+    calls = []
+    scope._queue = lambda key, method, args: calls.append((key, method, args))
+    scope.openMenu("acquire")
+
+    scope.adjustHorizontalPosition(0.1)
+    assert scope.horizontalPosition == 51.0
+    assert calls[-1] == ("horizontal_position", "set_horizontal_position", [51.0])
+    assert scope.bottomMenu[2]["value"] == "Off"
+    assert scope.bottomMenu[3]["value"] == "51 %"
+
+    scope.selectMenuItem(2)
+    scope.selectSideItem(1)
+    scope.adjustHorizontalPosition(0.1)
+    assert scope.delayMode
+    assert scope.horizontalDelay == 0.0001
+    assert calls[-1] == ("horizontal_delay", "set_delay", [0.0001])
+    assert scope.bottomMenu[2]["value"] == "On"
+    assert scope.bottomMenu[3]["value"] == "100 us"
+    scope.close()
+
+
+def test_simulation_single_acquires_one_frame_and_autoset_restores_view():
+    scope = controller()
+    scope._simulate_frame()
+    phase = scope._phase
+
+    scope.single()
+    assert not scope.running
+    assert scope._phase > phase
+    stopped_phase = scope._phase
+    scope._simulate_frame()
+    assert scope._phase == stopped_phase
+
+    scope.adjustChannelScale(1, 1)
+    scope.adjustChannelPosition(1, 1)
+    scope.adjustTimeScale(1)
+    scope.adjustHorizontalPosition(0.1)
+    scope.adjustTriggerLevel(1)
+    scope.autoset()
+    assert scope.running
+    assert scope.channelScale(1) == 0.5
+    assert scope.channelPosition(1) == 0.0
+    assert scope.timeScale == 1e-3
+    assert scope.horizontalPosition == 50.0
+    assert not scope.delayMode
+    assert scope.triggerLevel == 0.0
+    scope.close()
+
+
+def test_display_waveform_is_bounded_without_losing_raw_point_diagnostics():
+    scope = controller()
+    values = list(range(5000))
+    scope._waveform(1, values, values, {})
+    assert len(scope.waveforms[0]) <= 1250
+    assert scope.waveformPointCount == 5000
+    assert "GUI State: RUN · CH1 · channel" in scope.diagnosticsText
+    scope.close()
+
+
 def test_wave_inspector_playback_updates_simulated_pan_position():
     scope = controller()
     initial_position = scope.zoomPosition
@@ -36,6 +97,58 @@ def test_wave_inspector_playback_updates_simulated_pan_position():
     scope.close()
 
 
+def test_wave_inspector_readback_and_fine_adjustments_update_state():
+    scope = controller()
+    scope._snapshot({"zoom": {"enabled": True, "scale": 0.02, "position": 40.0}})
+    assert scope.zoomEnabled
+    assert scope.zoomScale == 0.02
+    assert scope.zoomPosition == 40.0
+
+    scope.panZoom(1, True)
+    assert scope.zoomPosition == 40.5
+    scope.adjustZoom(1, True)
+    assert scope.zoomScale == 0.019
+    scope.close()
+
+
+def test_trigger_status_uses_hardware_snapshot_state():
+    scope = controller()
+    scope._snapshot({"trigger": {"status": "READY", "source": "CH2", "level": 0.75}})
+
+    assert scope.triggerStatus == "READY"
+    assert scope.triggerSource == "CH2"
+    assert scope.triggerLevel == 0.75
+    scope.close()
+
+
+def test_trigger_level_adjustment_and_center_queue_physical_updates():
+    scope = controller()
+    calls = []
+    scope._queue = lambda key, method, args: calls.append((key, method, args))
+
+    scope.selectChannel(3)
+    calls.clear()
+    scope.adjustTriggerLevel(1)
+    scope.centerTrigger()
+
+    assert calls == [
+        ("trigger", "set_trigger_level", [3, 0.05]),
+        ("trigger", "set_trigger_level", [3, 0.0]),
+    ]
+    scope.close()
+
+
+def test_wave_inspector_set_clear_queues_physical_toggle():
+    scope = controller()
+    calls = []
+    scope._queue = lambda key, method, args: calls.append((key, method, args))
+
+    scope.toggleMark()
+
+    assert calls == [("mark_toggle", "toggle_mark", [])]
+    scope.close()
+
+
 def test_test_button_opens_option_dependent_menu_and_queues_front_panel_press():
     scope = controller()
     calls = []
@@ -44,6 +157,29 @@ def test_test_button_opens_option_dependent_menu_and_queues_front_panel_press():
     assert scope.menuContext == "test"
     assert scope.bottomMenu[0] == {"title": "Application Test", "value": "Option dependent"}
     assert calls[-1][1:] == ("open_test_menu", [])
+    scope.close()
+
+
+def test_panel_capture_uses_window_screen_and_reports_completion():
+    class Pixmap:
+        def isNull(self): return False
+        def save(self, path, file_format):
+            assert path == "panel.png"
+            assert file_format == "PNG"
+            return True
+
+    class Screen:
+        def grabWindow(self, window_id):
+            assert window_id == 42
+            return Pixmap()
+
+    class Window:
+        def screen(self): return Screen()
+        def winId(self): return 42
+
+    scope = controller()
+    scope.savePanelImage("panel.png", Window())
+    assert scope._last_rx == "screen_saved: panel.png"
     scope.close()
 
 
@@ -287,6 +423,32 @@ def test_measurement_gating_method_and_indicators_are_functional():
     scope.close()
 
 
+def test_waveform_cursor_link_and_bring_on_screen_are_functional():
+    scope = controller()
+    calls = []
+    scope._queue = lambda key, method, args: calls.append((key, method, args))
+    scope._cursors_ready({
+        "function": "WAVEFORM", "mode": "INDEPENDENT",
+        "x1": -0.001, "x2": 0.001, "vdelta": 1.5,
+    })
+    scope.openMenu("cursor")
+    assert scope.sideMenu[4]["selected"]
+    assert scope.knobAValue == "Waveform"
+
+    scope.selectMenuItem(2)
+    scope.selectSideItem(1)
+    assert scope.bottomMenu[2]["value"] == "Track"
+    assert calls[-1][1:] == ("set_cursor_mode", ["TRACK"])
+
+    scope.pressMenuItem(1)
+    assert scope.cursorX1 == -2.0 * scope.timeScale
+    assert scope.cursorX2 == 2.0 * scope.timeScale
+    assert calls[-2][1:] == ("set_cursor_position", ["VBARS", 1, -2.0 * scope.timeScale])
+    assert calls[-1][1:] == ("set_cursor_position", ["VBARS", 2, 2.0 * scope.timeScale])
+    assert scope.cursorWaveformDelta == 1.5
+    scope.close()
+
+
 def test_selected_channel_button_can_disable_trace():
     scope = controller()
     assert scope.channelEnabled(1)
@@ -331,6 +493,57 @@ def test_hardware_controller_can_switch_to_simulation(monkeypatch):
     scope.close()
 
 
+def test_disconnect_discards_pending_hardware_commands(monkeypatch):
+    class Signal:
+        def connect(self, _callback): pass
+        def emit(self, *_args): pass
+
+    class Worker:
+        resources_found = connection_changed = snapshot_ready = waveform_ready = Signal()
+        measurements_ready = cursors_ready = diagnostics = operation_done = error = Signal()
+
+    class Backend:
+        worker = Worker()
+        request_scan = request_connect = request_disconnect = request_invoke = Signal()
+        def close(self): pass
+
+    monkeypatch.setattr("mso2024_remote.qml_bridge.OscilloscopeController", lambda _parent: Backend())
+    scope = ScopeController(simulation=False)
+    scope._connection_changed(True, "TEKTRONIX,MSO2024,0,1", "USB::SCOPE")
+    scope._queue("scale1", "set_vertical_scale", [1, 0.5])
+    assert "scale1" in scope._pending
+
+    scope._connection_changed(False, "", "")
+
+    assert scope._pending == {}
+    assert not scope._flush_timer.isActive()
+    scope.close()
+
+
+def test_disconnected_hardware_commands_do_not_enter_queue(monkeypatch):
+    class Signal:
+        def connect(self, _callback): pass
+        def emit(self, *_args): pass
+
+    class Worker:
+        resources_found = connection_changed = snapshot_ready = waveform_ready = Signal()
+        measurements_ready = cursors_ready = diagnostics = operation_done = error = Signal()
+
+    class Backend:
+        worker = Worker()
+        request_scan = request_connect = request_disconnect = request_invoke = Signal()
+        def close(self): pass
+
+    monkeypatch.setattr("mso2024_remote.qml_bridge.OscilloscopeController", lambda _parent: Backend())
+    scope = ScopeController(simulation=False)
+
+    scope._queue("scale1", "set_vertical_scale", [1, 0.5])
+
+    assert scope._pending == {}
+    assert not scope._flush_timer.isActive()
+    scope.close()
+
+
 def test_hardware_bus_menu_disables_unconfirmed_application_modules(monkeypatch):
     class Signal:
         def connect(self, _callback): pass
@@ -349,6 +562,8 @@ def test_hardware_bus_menu_disables_unconfirmed_application_modules(monkeypatch)
     assert choices["Parallel"]["enabled"]
     assert not choices["I2C"]["enabled"]
     assert "DPO2EMBD" in choices["I2C"]["reason"]
+    scope.adjustMultipurpose("A", 1)
+    assert scope.knobAValue == "Parallel"
     scope.close()
 
 

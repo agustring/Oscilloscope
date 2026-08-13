@@ -262,6 +262,13 @@ class TektronixMSO2024:
             raise ValueError("Zoom position must be between 0 and 100 percent")
         self.write(f"ZOOM:ZOOM1:POSITION {percent:.8g}")  # SCPI: ZOOm:ZOOM1:POSition
 
+    def zoom_state(self) -> dict[str, Any]:
+        return {
+            "enabled": _bool(self.query("ZOOM:MODE?")),
+            "scale": _float(self.query("ZOOM:ZOOM1:SCALE?")),
+            "position": _float(self.query("ZOOM:ZOOM1:POSITION?")),
+        }
+
     def move_to_mark(self, direction: str) -> None:
         direction = direction.upper()
         if direction not in {"NEXT", "PREVIOUS"}:
@@ -273,6 +280,9 @@ class TektronixMSO2024:
         if source not in {f"CH{x}" for x in self.CHANNELS} | {"MATH", "REF1", "REF2", "COLUMN", "DIGITAL"}:
             raise ValueError("Unsupported mark source")
         self.write(f"MARK:CREATE {source}")  # SCPI: MARK:CREATE
+
+    def toggle_mark(self) -> None:
+        self.write("FPANEL:PRESS MARK")  # SCPI: FPAnel:PRESS MARk (Set/Clear Mark)
 
     def toggle_wave_inspector_playback(self) -> None:
         self.write("FPANEL:PRESS PAUSE")  # SCPI: FPAnel:PRESS PAUse (Wave Inspector play/pause)
@@ -447,6 +457,9 @@ class TektronixMSO2024:
             return "Setup/Hold" if trigger_class == "SETHOLD" else "Logic"
         return {"EDGE": "Edge", "VIDEO": "Video", "BUS": "Serial Bus (option)"}.get(trigger_type, "Edge")
 
+    def trigger_system_state(self) -> str:
+        return _strip(self.query("TRIGGER:STATE?")).upper()  # SCPI: TRIGger:STATE?
+
     def set_edge_source(self, source: str) -> None:
         allowed = {f"CH{x}" for x in self.CHANNELS} | {f"D{x}" for x in range(16)} | {"EXT", "LINE", "AUX"}
         source = source.upper()
@@ -613,6 +626,7 @@ class TektronixMSO2024:
         kind = self.trigger_kind()
         state: dict[str, Any] = {
             "kind": kind,
+            "status": self.trigger_system_state(),
             "mode": _strip(self.query("TRIGGER:A:MODE?")).upper(),
             "holdoff": _float(self.query("TRIGGER:A:HOLDOFF:TIME?")),
         }
@@ -698,14 +712,25 @@ class TektronixMSO2024:
             raise ValueError("Cursor must be VBARS/HBARS and position 1/2")
         self.write(f"CURSOR:{axis.upper()}:POSITION{cursor} {value:.12g}")
 
+    def set_cursor_mode(self, mode: str) -> None:
+        mode = mode.upper()
+        if mode not in {"TRACK", "INDEPENDENT"}:
+            raise ValueError("Cursor mode must be TRACK or INDEPENDENT")
+        self.write(f"CURSOR:MODE {mode}")  # SCPI: CURSor:MODe
+
     def cursor_state(self) -> dict[str, Any]:
         function = _strip(self.query("CURSOR:FUNCTION?")).upper()
         state: dict[str, Any] = {"function": function}
-        if function in {"VBARS", "SCREEN"}:
+        if function in {"VBARS", "SCREEN", "WAVEFORM"}:
             state.update(
                 x1=_float(self.query("CURSOR:VBARS:POSITION1?")),
                 x2=_float(self.query("CURSOR:VBARS:POSITION2?")),
                 dx=_float(self.query("CURSOR:VBARS:DELTA?")),
+            )
+        if function == "WAVEFORM":
+            state.update(
+                vdelta=_float(self.query("CURSOR:VBARS:VDELTA?")),
+                mode=_strip(self.query("CURSOR:MODE?")).upper(),
             )
         if function in {"HBARS", "SCREEN"}:
             state.update(
@@ -785,6 +810,7 @@ class TektronixMSO2024:
             "horizontal": self.horizontal_state(),
             "acquisition": self.acquisition_state(),
             "trigger": self.trigger_state(),
+            "zoom": self.zoom_state(),
         }
 
     @staticmethod

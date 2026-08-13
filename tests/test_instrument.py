@@ -4,12 +4,17 @@ from mso2024_remote.instrument.mso2024 import TektronixMSO2024
 
 
 class FakeResource:
-    def __init__(self):
+    def __init__(self, responses=None):
         self.commands = []
         self.read_termination = "\n"
+        self.responses = responses or {}
 
     def write(self, command):
         self.commands.append(command)
+
+    def query(self, command):
+        self.commands.append(command)
+        return self.responses[command]
 
 
 class FakeConnection:
@@ -37,6 +42,24 @@ def test_force_trigger_uses_documented_command():
     instrument = scope()
     instrument.force_trigger()
     assert instrument.resource.commands == ["TRIGGER FORCE"]
+
+
+def test_trigger_level_targets_the_selected_analog_channel():
+    instrument = scope()
+    instrument.set_trigger_level(3, -0.125)
+    assert instrument.resource.commands == ["TRIGGER:A:LEVEL:CH3 -0.125"]
+
+
+def test_horizontal_position_and_delay_select_the_matching_instrument_mode():
+    instrument = scope()
+    instrument.set_horizontal_position(62.5)
+    instrument.set_delay(-0.00025)
+    assert instrument.resource.commands == [
+        "HORIZONTAL:DELAY:MODE OFF",
+        "HORIZONTAL:POSITION 62.5",
+        "HORIZONTAL:DELAY:MODE ON",
+        "HORIZONTAL:DELAY:TIME -0.00025",
+    ]
 
 
 def test_test_button_uses_documented_front_panel_command():
@@ -83,6 +106,60 @@ def test_wave_inspector_play_pause_uses_documented_front_panel_argument():
     instrument = scope()
     instrument.toggle_wave_inspector_playback()
     assert instrument.resource.commands == ["FPANEL:PRESS PAUSE"]
+
+
+def test_wave_inspector_set_clear_uses_documented_front_panel_argument():
+    instrument = scope()
+    instrument.toggle_mark()
+    assert instrument.resource.commands == ["FPANEL:PRESS MARK"]
+
+
+def test_wave_inspector_zoom_state_uses_documented_queries():
+    connection = FakeConnection()
+    connection.resource = FakeResource({
+        "ZOOM:MODE?": "ON",
+        "ZOOM:ZOOM1:SCALE?": "0.002",
+        "ZOOM:ZOOM1:POSITION?": "62.5",
+    })
+    instrument = TektronixMSO2024(connection)
+
+    assert instrument.zoom_state() == {"enabled": True, "scale": 0.002, "position": 62.5}
+    assert instrument.resource.commands == [
+        "ZOOM:MODE?", "ZOOM:ZOOM1:SCALE?", "ZOOM:ZOOM1:POSITION?"
+    ]
+
+
+def test_waveform_cursor_readback_includes_amplitude_and_link_mode():
+    connection = FakeConnection()
+    connection.resource = FakeResource({
+        "CURSOR:FUNCTION?": "WAVEFORM",
+        "CURSOR:VBARS:POSITION1?": "-0.001",
+        "CURSOR:VBARS:POSITION2?": "0.002",
+        "CURSOR:VBARS:DELTA?": "0.003",
+        "CURSOR:VBARS:VDELTA?": "1.25",
+        "CURSOR:MODE?": "TRACK",
+    })
+    instrument = TektronixMSO2024(connection)
+
+    assert instrument.cursor_state() == {
+        "function": "WAVEFORM", "x1": -0.001, "x2": 0.002,
+        "dx": 0.003, "vdelta": 1.25, "mode": "TRACK",
+    }
+
+
+def test_cursor_link_mode_uses_documented_command():
+    instrument = scope()
+    instrument.set_cursor_mode("track")
+    assert instrument.resource.commands == ["CURSOR:MODE TRACK"]
+
+
+def test_trigger_system_state_uses_documented_query():
+    connection = FakeConnection()
+    connection.resource = FakeResource({"TRIGGER:STATE?": ":TRIGGER:STATE READY"})
+    instrument = TektronixMSO2024(connection)
+
+    assert instrument.trigger_system_state() == "READY"
+    assert instrument.resource.commands == ["TRIGGER:STATE?"]
 
 
 def test_search_commands_use_original_series_vocabulary():

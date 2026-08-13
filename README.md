@@ -19,7 +19,7 @@ to the physical oscilloscope.
 - Run, Stop, Single Sequence, and Autoset
 - Wheel changes the selected channel's real V/div; Ctrl+wheel changes the
   oscilloscope's real time/div
-- Horizontal dragging changes instrument delay; double-click centers the view
+- Horizontal dragging changes trigger position, or delay time when Delay mode is on; double-click centers the view
 - Type-specific Edge, Pulse Width, Runt, transition-time, Logic, Setup/Hold,
   Video, and capability-gated Bus trigger menus backed by verified commands
 - Four hardware measurement slots, all documented measurement types including
@@ -73,12 +73,21 @@ The virtual front panel supports wheel and drag knob input, Shift fine mode,
 waveform wheel scaling, Ctrl+wheel timebase control, contextual bezel menus,
 F11 fullscreen, and Ctrl+Shift+D diagnostics.
 
+Wave Inspector mirrors the physical Pan/Zoom control: the outer ring pans, the
+inner knob zooms and toggles zoom when pressed, and Set/Clear Mark uses the
+instrument's documented front-panel toggle. Zoom state is included in hardware
+readback so physical front-panel changes update the remote panel.
+
 On Linux or macOS, activate with `source .venv/bin/activate` instead.
 
 Connect and turn on the oscilloscope before starting the application. The app
 scans all VISA resources and queries each with `*IDN?`; verified MSO2024 entries
 appear first. Select one and press **Connect**. No VISA resource string is
 hardcoded.
+
+If the instrument disconnects, the last waveform remains visible under a stale
+data scrim while mouse controls, instrument shortcuts, and queued SCPI changes
+are blocked until reconnection or simulation mode is selected.
 
 If discovery fails, open **Diagnostics** and check:
 
@@ -98,7 +107,7 @@ changing a Windows USB driver can prevent vendor VISA software from using it.
 - Press a channel key or its on-screen marker to choose the active channel.
 - Wheel over the plot changes that channel's hardware V/div in 1-2-5 steps.
 - Ctrl+wheel changes the hardware time/div in 1-2-5 steps.
-- Drag horizontally to update horizontal delay on the instrument.
+- Drag horizontally to update trigger position, or delay time when Delay mode is on.
 - Double-click the plot to center channel/horizontal position; double-click the
   trigger or channel marker to center that marker.
 - Choose cursor type in **Cursors**. Drag orange plot lines to change the
@@ -106,6 +115,8 @@ changing a Windows USB driver can prevent vendor VISA software from using it.
 - Right-click the waveform for channel enable, coupling, probe, invert, and
   measurement shortcuts.
 - Use the header mode key to switch between **Front Panel** and **Enhanced**.
+- Below 730 px window height, the app automatically uses the compact waveform
+  layout so controls are not clipped.
 
 ## Instrument-specific limitations
 

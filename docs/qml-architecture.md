@@ -39,7 +39,8 @@ Front panel keeps the display dominant on the left, the A/B, horizontal,
 acquisition, and trigger groups on the right, and four vertical channel strips
 below. Enhanced mode uses the same display and state but collapses the physical
 groups into a compact bottom control rail. Additional width always goes first
-to the display; knobs have bounded sizes.
+to the display; knobs have bounded sizes. Below 730 px window height, the
+enhanced layout is selected automatically to keep every visible control usable.
 
 ## Implemented verification slice
 

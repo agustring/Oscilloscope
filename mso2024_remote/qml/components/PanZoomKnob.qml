@@ -72,14 +72,17 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             property real startY
-            onPressed: startY = mouseY
-            onPositionChanged: if (pressed && Math.abs(mouseY - startY) > 7) {
-                const up = mouseY < startY
-                root.panAngle += up ? 12 : -12
-                up ? root.panIncrement((modifiers & Qt.ShiftModifier) !== 0)
-                   : root.panDecrement((modifiers & Qt.ShiftModifier) !== 0)
+            onPressed: {
+                root.forceActiveFocus()
                 startY = mouseY
             }
+            onPositionChanged: mouse => { if (pressed && Math.abs(mouseY - startY) > 7) {
+                const up = mouseY < startY
+                root.panAngle += up ? 12 : -12
+                up ? root.panIncrement((mouse.modifiers & Qt.ShiftModifier) !== 0)
+                   : root.panDecrement((mouse.modifiers & Qt.ShiftModifier) !== 0)
+                startY = mouseY
+            } }
             onWheel: {
                 const up = wheel.angleDelta.y > 0
                 root.panAngle += up ? 12 : -12
@@ -119,15 +122,21 @@ Item {
             hoverEnabled: true
             z: 4
             property real startY
-            onPressed: startY = mouseY
-            onPositionChanged: if (pressed && Math.abs(mouseY - startY) > 7) {
-                const up = mouseY < startY
-                root.zoomAngle += up ? 12 : -12
-                up ? root.zoomIncrement((modifiers & Qt.ShiftModifier) !== 0)
-                   : root.zoomDecrement((modifiers & Qt.ShiftModifier) !== 0)
+            property bool moved: false
+            onPressed: {
+                root.forceActiveFocus()
                 startY = mouseY
+                moved = false
             }
-            onClicked: root.zoomPushed()
+            onPositionChanged: mouse => { if (pressed && Math.abs(mouseY - startY) > 7) {
+                const up = mouseY < startY
+                moved = true
+                root.zoomAngle += up ? 12 : -12
+                up ? root.zoomIncrement((mouse.modifiers & Qt.ShiftModifier) !== 0)
+                   : root.zoomDecrement((mouse.modifiers & Qt.ShiftModifier) !== 0)
+                startY = mouseY
+            } }
+            onClicked: if (!moved) root.zoomPushed()
             onWheel: {
                 const up = wheel.angleDelta.y > 0
                 root.zoomAngle += up ? 12 : -12
@@ -153,4 +162,15 @@ Item {
     Keys.onRightPressed: root.panIncrement((event.modifiers & Qt.ShiftModifier) !== 0)
     Keys.onUpPressed: root.zoomIncrement((event.modifiers & Qt.ShiftModifier) !== 0)
     Keys.onDownPressed: root.zoomDecrement((event.modifiers & Qt.ShiftModifier) !== 0)
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_PageUp) {
+            for (let i = 0; i < 5; ++i)
+                root.zoomIncrement(false)
+            event.accepted = true
+        } else if (event.key === Qt.Key_PageDown) {
+            for (let i = 0; i < 5; ++i)
+                root.zoomDecrement(false)
+            event.accepted = true
+        }
+    }
 }
