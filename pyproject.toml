@@ -10,7 +10,6 @@ requires-python = ">=3.10"
 dependencies = [
     "PySide6>=6.7,<7",
     "numpy>=1.26,<3",
-    "pyqtgraph>=0.13.7,<1",
     "PyVISA>=1.14,<2",
     "pyvisa-py[usb]>=0.7,<1",
     "libusb-package>=1.0.26.3,<2",
@@ -24,6 +23,30 @@ include = ["mso2024_remote*"]
 
 [tool.setuptools.package-data]
 mso2024_remote = ["qml/**/*.qml", "qml/qmldir"]
+
+[tool.pyside6-project]
+files = [
+    "main.py",
+    "mso2024_remote/__init__.py",
+    "mso2024_remote/main.py",
+    "mso2024_remote/controller.py",
+    "mso2024_remote/qml_bridge.py",
+    "mso2024_remote/instrument/__init__.py",
+    "mso2024_remote/instrument/mso2024.py",
+    "mso2024_remote/instrument/visa_connection.py",
+    "mso2024_remote/instrument/waveform.py",
+    "mso2024_remote/workers/__init__.py",
+    "mso2024_remote/workers/instrument_worker.py",
+    "mso2024_remote/qml/Main.qml",
+    "mso2024_remote/qml/ScopeTheme.qml",
+    "mso2024_remote/qml/components/PanZoomKnob.qml",
+    "mso2024_remote/qml/components/RotaryKnob.qml",
+    "mso2024_remote/qml/components/ScopeButton.qml",
+    "mso2024_remote/qml/components/SoftKey.qml",
+    "mso2024_remote/qml/menus/BottomBezelMenu.qml",
+    "mso2024_remote/qml/menus/SideBezelMenu.qml",
+    "mso2024_remote/qml/scope/ScopeDisplay.qml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
